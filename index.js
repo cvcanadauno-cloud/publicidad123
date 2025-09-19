@@ -1,0 +1,68 @@
+import express from "express";
+import bodyParser from "body-parser";
+import fetch from "node-fetch";
+
+const app = express();
+app.use(bodyParser.json());
+
+const VERIFY_TOKEN = "cvcanada123"; // pon lo que quieras
+const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN; // desde Meta
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // tu key de OpenAI
+
+// Webhook verification
+app.get("/webhook", (req, res) => {
+  if (req.query["hub.mode"] === "subscribe" &&
+      req.query["hub.verify_token"] === VERIFY_TOKEN) {
+    res.send(req.query["hub.challenge"]);
+  } else {
+    res.sendStatus(403);
+  }
+});
+
+// Webhook to receive messages
+app.post("/webhook", async (req, res) => {
+  const body = req.body;
+  if (body.object === "page") {
+    for (const entry of body.entry) {
+      const event = entry.messaging[0];
+      if (event.message && event.message.text) {
+        const sender = event.sender.id;
+        const text = event.message.text;
+
+        // Enviar a OpenAI con el Prompt Maestro
+        const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "gpt-5",
+            messages: [
+              { role: "system", content: "Eres el asistente comercial 24/7 de CV Canada Immigration. Usa este prompt maestro: ... (aquí pega el Prompt Maestro completo)" },
+              { role: "user", content: text }
+            ],
+          }),
+        }).then(r => r.json());
+
+        const reply = gptResponse.choices[0].message.content;
+
+        // Responder al cliente en Messenger
+        await fetch(`https://graph.facebook.com/v17.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { id: sender },
+            message: { text: reply }
+          }),
+        });
+      }
+    }
+    res.sendStatus(200);
+  } else {
+    res.sendStatus(404);
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Bot running on port ${PORT}`));
