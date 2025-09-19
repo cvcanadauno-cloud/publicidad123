@@ -5,7 +5,7 @@ import fetch from "node-fetch";
 const app = express();
 app.use(bodyParser.json());
 
-const VERIFY_TOKEN = "cvcanada123"; // pon lo que quieras
+const VERIFY_TOKEN = "publicidad123"; // pon lo que quieras
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN; // desde Meta
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // tu key de OpenAI
 
