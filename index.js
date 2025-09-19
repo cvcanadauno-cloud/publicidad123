@@ -22,40 +22,50 @@ app.get("/webhook", (req, res) => {
 // Webhook to receive messages
 app.post("/webhook", async (req, res) => {
   const body = req.body;
+
   if (body.object === "page") {
     for (const entry of body.entry) {
-      const event = entry.messaging[0];
-      if (event.message && event.message.text) {
-        const sender = event.sender.id;
-        const text = event.message.text;
+      const webhookEvent = entry.messaging && entry.messaging[0];
+      if (!webhookEvent) continue; // Si no hay evento, sigue al siguiente
 
-        // Enviar a OpenAI con el Prompt Maestro
-        const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "gpt-5",
-            messages: [
-              { role: "system", content: "Eres el asistente comercial 24/7 de CV Canada Immigration. Usa este prompt maestro: ... (aquí pega el Prompt Maestro completo)" },
-              { role: "user", content: text }
-            ],
-          }),
-        }).then(r => r.json());
+      const sender = webhookEvent.sender?.id;
+      const text = webhookEvent.message?.text;
 
-        const reply = gptResponse.choices[0].message.content;
+      if (sender && text) {
+        try {
+          // Enviar a OpenAI
+          const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${OPENAI_API_KEY}`
+            },
+            body: JSON.stringify({
+              model: "gpt-5",
+              messages: [
+                {
+                  role: "system",
+                  content: "Eres el asistente comercial 24/7 de CV Canada Immigration. Usa este prompt maestro: ... (aquí pega el Prompt Maestro completo)"
+                },
+                { role: "user", content: text }
+              ],
+            }),
+          }).then(r => r.json());
 
-        // Responder al cliente en Messenger
-        await fetch(`https://graph.facebook.com/v17.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recipient: { id: sender },
-            message: { text: reply }
-          }),
-        });
+          const reply = gptResponse.choices?.[0]?.message?.content || "Lo siento, no entendí tu mensaje.";
+
+          // Responder al cliente en Messenger
+          await fetch(`https://graph.facebook.com/v17.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: sender },
+              message: { text: reply }
+            }),
+          });
+        } catch (error) {
+          console.error("Error procesando mensaje:", error);
+        }
       }
     }
     res.sendStatus(200);
